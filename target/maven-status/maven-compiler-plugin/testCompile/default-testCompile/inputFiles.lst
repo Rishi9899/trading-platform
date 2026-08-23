@@ -1,0 +1,7 @@
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\candle\CandleAggregatorTest.java
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\candle\CandleBuilderTest.java
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\eventing\TickEventQueueTest.java
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\indicator\ExponentialMovingAverageTest.java
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\indicator\RelativeStrengthIndexTest.java
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\indicator\SimpleMovingAverageTest.java
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\strategy\impl\EmaCrossoverStrategyTest.java

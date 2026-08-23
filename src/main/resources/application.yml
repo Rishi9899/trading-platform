@@ -1,0 +1,57 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/trading_platform
+    username: postgres
+    password: root
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+
+app:
+  tick:
+    source: fake   # fake | fyers-sidecar
+    symbols:
+      - NIFTY
+      - BANKNIFTY
+    interval-millis: 500
+  strategies:
+    - type: candle-direction
+      symbol: NIFTY
+      timeframe: 10s      # base timeframe
+      parameters: { }
+    - type: candle-direction
+      symbol: BANKNIFTY
+      timeframe: 30s      # derived timeframe - proves per-timeframe subscription works
+      parameters: { }
+    - type: ema-crossover
+      symbol: NIFTY
+      timeframe: 30s
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 20
+        rsiPeriod: 14
+        buyRsiThreshold: 55
+        sellRsiThreshold: 45
+  candle:
+    timeframe-seconds: 10        # base timeframe (dev-fast; real deployment: 60 for 1m)
+    derived-timeframes:
+      - "30s"
+      - "60s"
+    # real deployment example:
+    #   timeframe-seconds: 60
+    #   derived-timeframes: ["5m", "15m"]
+  queue:
+    capacity: 1000
+  fyers:
+    sidecar:
+      url: ws://localhost:8765
+      reconnect-delay-millis: 5000
