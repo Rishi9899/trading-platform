@@ -26,6 +26,7 @@ app:
     symbols:
       - NSE:NIFTY50-INDEX
       - NSE:NIFTYBANK-INDEX
+      - MCX:CRUDEOIL26SEPFUT
     interval-millis: 500
 
   strategies:
@@ -41,6 +42,16 @@ app:
 
     - type: ema-crossover
       symbol: NSE:NIFTYBANK-INDEX
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: ema-crossover
+      symbol: MCX:CRUDEOIL26SEPFUT
       timeframe: 5m
       parameters:
         fastPeriod: 9

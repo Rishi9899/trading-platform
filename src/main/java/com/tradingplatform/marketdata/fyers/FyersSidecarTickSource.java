@@ -1,6 +1,5 @@
 package com.tradingplatform.marketdata.fyers;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradingplatform.domain.tick.Tick;
@@ -29,7 +28,7 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
 
     private final String sidecarUrl;
     private final long reconnectDelayMillis;
-    private final List<TickListener> listeners = new CopyOnWriteArrayList<>();
+    private final List<TickListener> tickListeners = new CopyOnWriteArrayList<>();
     private final List<HistoricalDataListener> historyListeners = new CopyOnWriteArrayList<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -45,6 +44,81 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
     public FyersSidecarTickSource(String sidecarUrl, long reconnectDelayMillis) {
         this.sidecarUrl = sidecarUrl;
         this.reconnectDelayMillis = reconnectDelayMillis;
+    }
+
+    @Override
+    public void addListener(TickListener listener) {
+        tickListeners.add(listener);
+    }
+
+    public void addHistoryListener(HistoricalDataListener listener) {
+        historyListeners.add(listener);
+    }
+
+    @Override
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        try {
+            JsonNode root = objectMapper.readTree(message.getPayload());
+
+            if (root.has("type")) {
+                String type = root.get("type").asText();
+
+                switch (type) {
+                    case "history" -> handleHistoryMessage(root);
+                    case "history_complete" -> handleHistoryCompleteMessage(root);
+                    case "tick" -> handleTickMessage(root);
+                    case "heartbeat" -> {
+                        boolean fyersConnected = root.path("fyersConnected").asBoolean(false);
+                        log.debug("Sidecar heartbeat received. FYERS WS Connected: {}", fyersConnected);
+                    }
+                    default -> log.warn("Unknown message type received: {}", type);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse payload from sidecar: {}", e.getMessage());
+        }
+    }
+
+    private void handleHistoryMessage(JsonNode root) {
+        String symbol = root.get("symbol").asText();
+        JsonNode candlesNode = root.get("candles");
+
+        if (candlesNode != null && candlesNode.isArray()) {
+            for (JsonNode node : candlesNode) {
+                Instant ts = Instant.ofEpochMilli(node.get("timestamp").asLong());
+                BigDecimal open = BigDecimal.valueOf(node.get("open").asDouble());
+                BigDecimal high = BigDecimal.valueOf(node.get("high").asDouble());
+                BigDecimal low = BigDecimal.valueOf(node.get("low").asDouble());
+                BigDecimal close = BigDecimal.valueOf(node.get("close").asDouble());
+                long volume = node.get("volume").asLong();
+
+                for (HistoricalDataListener listener : historyListeners) {
+                    listener.onHistoricalCandle(symbol, ts, open, high, low, close, volume);
+                }
+            }
+            log.info("Received batch of {} historical candles for {}", candlesNode.size(), symbol);
+        }
+    }
+
+    private void handleHistoryCompleteMessage(JsonNode root) {
+        String symbol = root.get("symbol").asText();
+        for (HistoricalDataListener listener : historyListeners) {
+            listener.onHistoryComplete(symbol);
+        }
+    }
+
+    private void handleTickMessage(JsonNode root) {
+        String symbol = root.get("symbol").asText();
+        double price = root.get("price").asDouble();
+        long volume = root.get("volume").asLong();
+        long timestampMillis = root.get("timestamp").asLong();
+
+        Instant timestamp = timestampMillis > 0 ? Instant.ofEpochMilli(timestampMillis) : Instant.now();
+        Tick tick = new Tick(symbol, timestamp, BigDecimal.valueOf(price), volume);
+
+        for (TickListener listener : tickListeners) {
+            listener.onTick(tick);
+        }
     }
 
     @Override
@@ -67,19 +141,8 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
         }
     }
 
-    @Override
-    public void addListener(TickListener listener) {
-        listeners.add(listener);
-    }
-
-    public void addHistoryListener(HistoricalDataListener listener) {
-        historyListeners.add(listener);
-    }
-
     private void connect() {
-        if (!running.get()) {
-            return;
-        }
+        if (!running.get()) return;
         try {
             log.info("Connecting to sidecar at {}", sidecarUrl);
             client.execute(this, sidecarUrl);
@@ -90,10 +153,7 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
     }
 
     private void scheduleReconnect() {
-        if (!running.get()) {
-            return;
-        }
-        log.info("Reconnecting to sidecar in {}ms", reconnectDelayMillis);
+        if (!running.get()) return;
         reconnectExecutor.schedule(this::connect, reconnectDelayMillis, TimeUnit.MILLISECONDS);
     }
 
@@ -111,69 +171,5 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         log.error("Sidecar transport error: {}", exception.getMessage());
-    }
-
-    @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        try {
-            JsonNode root = objectMapper.readTree(message.getPayload());
-            String type = root.has("type") ? root.get("type").asText() : "tick";
-
-            if ("history".equals(type)) {
-                handleHistoryMessage(root);
-            } else if ("tick".equals(type)) {
-                handleTickMessage(root);
-            } else {
-                log.warn("Unknown message type received: {}", type);
-            }
-        } catch (Exception e) {
-            log.error("Failed to parse payload from sidecar: {} (raw={})", e.getMessage(), message.getPayload());
-        }
-    }
-
-    private void handleHistoryMessage(JsonNode root) {
-        String symbol = root.get("symbol").asText();
-        JsonNode candlesNode = root.get("candles");
-
-        if (candlesNode != null && candlesNode.isArray()) {
-            log.info("Received batch of {} historical candles for {}", candlesNode.size(), symbol);
-
-            for (JsonNode node : candlesNode) {
-                Instant ts = Instant.ofEpochMilli(node.get("timestamp").asLong());
-                BigDecimal open = BigDecimal.valueOf(node.get("open").asDouble());
-                BigDecimal high = BigDecimal.valueOf(node.get("high").asDouble());
-                BigDecimal low = BigDecimal.valueOf(node.get("low").asDouble());
-                BigDecimal close = BigDecimal.valueOf(node.get("close").asDouble());
-                long volume = node.get("volume").asLong();
-
-                for (HistoricalDataListener listener : historyListeners) {
-                    listener.onHistoricalCandle(symbol, ts, open, high, low, close, volume);
-                }
-            }
-
-            // Notify completeness after inserting the batch
-            for (HistoricalDataListener listener : historyListeners) {
-                listener.onHistoryComplete(symbol);
-            }
-        }
-    }
-
-    private void handleTickMessage(JsonNode root) throws Exception {
-        IncomingTick incoming = objectMapper.treeToValue(root, IncomingTick.class);
-        Tick tick = toTick(incoming);
-        for (TickListener listener : listeners) {
-            listener.onTick(tick);
-        }
-    }
-
-    private Tick toTick(IncomingTick incoming) {
-        Instant timestamp = incoming.timestamp() > 0
-                ? Instant.ofEpochMilli(incoming.timestamp())
-                : Instant.now();
-        return new Tick(incoming.symbol(), timestamp, BigDecimal.valueOf(incoming.price()), incoming.volume());
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record IncomingTick(String symbol, double price, long volume, long timestamp) {
     }
 }
