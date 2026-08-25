@@ -14,33 +14,22 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Composes a higher timeframe (e.g. 5m) from consecutive base-timeframe
- * candles (e.g. 1m) - without re-processing raw ticks. One ingestion
- * cost (the base CandleBuilder), many derived views: N strategies on N
- * different timeframes for the same symbol don't each reprocess the
- * tick stream independently.
+ * Composes a higher timeframe (e.g., 5m) from lower base timeframe candles (e.g., 1m).
  *
- * NOT thread-safe by design: this is only ever driven synchronously by
- * whichever thread emits base candles (in this pipeline, the single
- * TickEventQueue consumer thread, via CandleBuilder.emit()). If a future
- * change ever feeds this from multiple threads concurrently, add
- * synchronization then - deliberately not adding it preemptively.
- *
- * If ticks were dropped or a symbol had a gap, a target window may not
- * receive its full complement of base candles. Rather than emit a
- * misleading partial candle, that window is skipped and logged - same
- * "drop and log rather than silently produce wrong data" approach
- * CandleBuilder uses for late ticks.
+ * Implements gap recovery with synthetic forward-filling so strategy and technical indicator
+ * calculations never fail due to missing market data or network drops.
  */
 public class CandleAggregator implements CandleListener {
 
     private static final Logger log = LoggerFactory.getLogger(CandleAggregator.class);
 
+    private final Duration baseTimeframe;
     private final Duration targetTimeframe;
     private final String targetLabel;
     private final int expectedBaseCandleCount;
 
     private final Map<String, WindowBucket> bucketsBySymbol = new HashMap<>();
+    private final Map<String, Candle> lastKnownBaseCandleBySymbol = new HashMap<>();
     private final List<CandleListener> listeners = new CopyOnWriteArrayList<>();
 
     public CandleAggregator(Duration baseTimeframe, Duration targetTimeframe, String targetLabel) {
@@ -49,6 +38,7 @@ public class CandleAggregator implements CandleListener {
             throw new IllegalArgumentException("targetTimeframe (" + targetTimeframe
                     + ") must be a whole multiple of baseTimeframe (" + baseTimeframe + ")");
         }
+        this.baseTimeframe = baseTimeframe;
         this.targetTimeframe = targetTimeframe;
         this.targetLabel = targetLabel;
         this.expectedBaseCandleCount = (int) (targetTimeframe.getSeconds() / baseTimeframe.getSeconds());
@@ -58,7 +48,6 @@ public class CandleAggregator implements CandleListener {
         listeners.add(listener);
     }
 
-    /** Feed this a base-timeframe candle - register it as a listener on the base CandleBuilder. */
     @Override
     public void onCandleClosed(Candle baseCandle) {
         Instant targetWindowStart = CandleWindow.alignDown(baseCandle.getWindowStart(), targetTimeframe);
@@ -75,36 +64,89 @@ public class CandleAggregator implements CandleListener {
         }
 
         bucket.baseCandles.add(baseCandle);
+        lastKnownBaseCandleBySymbol.put(symbol, baseCandle);
     }
 
     private void flush(String symbol, WindowBucket bucket) {
         if (bucket.baseCandles.isEmpty()) {
             return;
         }
-        if (bucket.baseCandles.size() != expectedBaseCandleCount) {
-            log.warn("Skipping incomplete {} window for {} at {}: got {}/{} base candles (likely a gap upstream)",
-                    targetLabel, symbol, bucket.windowStart, bucket.baseCandles.size(), expectedBaseCandleCount);
-            return;
-        }
 
-        List<Candle> ordered = bucket.baseCandles;
-        BigDecimal open = ordered.get(0).getOpen();
-        BigDecimal close = ordered.get(ordered.size() - 1).getClose();
-        BigDecimal high = ordered.get(0).getHigh();
-        BigDecimal low = ordered.get(0).getLow();
+        List<Candle> completeBaseList = synthesizeMissingBaseCandles(symbol, bucket);
+
+        BigDecimal open = completeBaseList.get(0).getOpen();
+        BigDecimal close = completeBaseList.get(completeBaseList.size() - 1).getClose();
+        BigDecimal high = completeBaseList.get(0).getHigh();
+        BigDecimal low = completeBaseList.get(0).getLow();
         long volume = 0;
-        for (Candle c : ordered) {
+
+        for (Candle c : completeBaseList) {
             if (c.getHigh().compareTo(high) > 0) high = c.getHigh();
             if (c.getLow().compareTo(low) < 0) low = c.getLow();
             volume += c.getVolume();
         }
 
-        Candle aggregated = new Candle(symbol, targetLabel, bucket.windowStart, bucket.windowStart.plus(targetTimeframe),
-                open, high, low, close, volume);
+        Candle aggregated = new Candle(
+                symbol,
+                targetLabel,
+                bucket.windowStart,
+                bucket.windowStart.plus(targetTimeframe),
+                open,
+                high,
+                low,
+                close,
+                volume
+        );
 
         for (CandleListener listener : listeners) {
             listener.onCandleClosed(aggregated);
         }
+    }
+
+    private List<Candle> synthesizeMissingBaseCandles(String symbol, WindowBucket bucket) {
+        if (bucket.baseCandles.size() == expectedBaseCandleCount) {
+            return bucket.baseCandles;
+        }
+
+        log.warn("Incomplete {} window for {} at {}: got {}/{} base candles. Forward-filling missing slots.",
+                targetLabel, symbol, bucket.windowStart, bucket.baseCandles.size(), expectedBaseCandleCount);
+
+        List<Candle> filledList = new ArrayList<>(expectedBaseCandleCount);
+        Map<Instant, Candle> presentCandles = new HashMap<>();
+        for (Candle c : bucket.baseCandles) {
+            presentCandles.put(c.getWindowStart(), c);
+        }
+
+        Candle lastSeen = lastKnownBaseCandleBySymbol.get(symbol);
+        Instant currentSlot = bucket.windowStart;
+
+        for (int i = 0; i < expectedBaseCandleCount; i++) {
+            Candle actual = presentCandles.get(currentSlot);
+            if (actual != null) {
+                filledList.add(actual);
+                lastSeen = actual;
+            } else {
+                BigDecimal fallbackPrice = (lastSeen != null)
+                        ? lastSeen.getClose()
+                        : bucket.baseCandles.get(0).getOpen();
+
+                Candle synthetic = new Candle(
+                        symbol,
+                        "synthetic-base",
+                        currentSlot,
+                        currentSlot.plus(baseTimeframe),
+                        fallbackPrice,
+                        fallbackPrice,
+                        fallbackPrice,
+                        fallbackPrice,
+                        0L
+                );
+                filledList.add(synthetic);
+            }
+            currentSlot = currentSlot.plus(baseTimeframe);
+        }
+
+        return filledList;
     }
 
     private static final class WindowBucket {

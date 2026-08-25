@@ -6,16 +6,20 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/**
+ * What a StrategyInstance said, at a point in time: "given this market
+ * state, I think BUY/SELL/HOLD". A Signal is a strategy's opinion - it is
+ * NOT an order and NOT a trade.
+ *
+ * Carries its own timeframe because symbol + timeframe is the strategy
+ * isolation boundary throughout this platform (see StrategyEngine) - a
+ * Signal without it would be ambiguous about which of potentially
+ * several instances (same symbol, different timeframes) produced it.
+ */
 @Entity
-@Table(
-        name = "signal",
-        indexes = {
-                @Index(
-                        name = "idx_signal_strategy_instance_time",
-                        columnList = "strategy_instance_id,timestamp"
-                )
-        }
-)
+@Table(name = "signal", indexes = {
+        @Index(name = "idx_signal_strategy_instance_time", columnList = "strategy_instance_id,timestamp")
+})
 public class Signal {
 
     @Id
@@ -28,6 +32,9 @@ public class Signal {
 
     @Column(nullable = false)
     private String symbol;
+
+    @Column(nullable = false, length = 16)
+    private String timeframe;
 
     @Column(nullable = false)
     private Instant timestamp;
@@ -48,19 +55,14 @@ public class Signal {
     private Instant createdAt;
 
     protected Signal() {
+        // required by JPA
     }
 
-    public Signal(
-            StrategyInstance strategyInstance,
-            String symbol,
-            Instant timestamp,
-            SignalType signalType,
-            BigDecimal price,
-            Double confidence,
-            String reason
-    ) {
+    public Signal(StrategyInstance strategyInstance, String symbol, String timeframe, Instant timestamp,
+                  SignalType signalType, BigDecimal price, Double confidence, String reason) {
         this.strategyInstance = strategyInstance;
         this.symbol = symbol;
+        this.timeframe = timeframe;
         this.timestamp = timestamp;
         this.signalType = signalType;
         this.price = price;
@@ -79,6 +81,10 @@ public class Signal {
 
     public String getSymbol() {
         return symbol;
+    }
+
+    public String getTimeframe() {
+        return timeframe;
     }
 
     public Instant getTimestamp() {

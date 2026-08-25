@@ -2,6 +2,8 @@ com\tradingplatform\strategy\MarketContext.class
 com\tradingplatform\domain\signal\SignalType.class
 com\tradingplatform\domain\strategy\StrategyInstanceRepository.class
 com\tradingplatform\domain\candle\Candle.class
+com\tradingplatform\marketdata\fyers\FyersSidecarTickSource$HistoricalDataListener.class
+com\tradingplatform\evaluation\PerformanceTrackingSignalListener.class
 com\tradingplatform\domain\performance\PerformanceRepository.class
 com\tradingplatform\config\MarketDataProperties.class
 com\tradingplatform\controller\HealthController.class
@@ -32,6 +34,7 @@ com\tradingplatform\config\StrategyConfigProperties.class
 com\tradingplatform\strategy\StrategyRegistry.class
 com\tradingplatform\candle\CandleBuilder.class
 com\tradingplatform\strategy\StrategyDecision.class
+com\tradingplatform\config\MarketDataPipelineRunner$1.class
 com\tradingplatform\indicator\ExponentialMovingAverage.class
 com\tradingplatform\candle\CandleWindow.class
 com\tradingplatform\strategy\StrategyFactory.class

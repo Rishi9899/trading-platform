@@ -1,5 +1,6 @@
 D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\candle\CandleAggregatorTest.java
 D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\candle\CandleBuilderTest.java
+D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\evaluation\StrategyEvaluatorTest.java
 D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\eventing\TickEventQueueTest.java
 D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\indicator\ExponentialMovingAverageTest.java
 D:\trading-platform-phase1\trading-platform\src\test\java\com\tradingplatform\indicator\RelativeStrengthIndexTest.java

@@ -3,5 +3,6 @@ com\tradingplatform\indicator\ExponentialMovingAverageTest.class
 com\tradingplatform\indicator\RelativeStrengthIndexTest.class
 com\tradingplatform\eventing\TickEventQueueTest.class
 com\tradingplatform\candle\CandleBuilderTest.class
+com\tradingplatform\evaluation\StrategyEvaluatorTest.class
 com\tradingplatform\indicator\SimpleMovingAverageTest.class
 com\tradingplatform\strategy\impl\EmaCrossoverStrategyTest.class

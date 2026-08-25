@@ -19,24 +19,24 @@ public class StrategyRegistryConfig {
 
         registry.register("ema-crossover", parameters -> new EmaCrossoverStrategy(
                 intParam(parameters, "fastPeriod", 9),
-                intParam(parameters, "slowPeriod", 20),
+                intParam(parameters, "slowPeriod", 21),
                 intParam(parameters, "rsiPeriod", 14),
-                bigDecimalParam(parameters, "buyRsiThreshold", "55"),
-                bigDecimalParam(parameters, "sellRsiThreshold", "45")
+                bigDecimalParam(parameters, "buyRsiThreshold", "50.0"),
+                bigDecimalParam(parameters, "sellRsiThreshold", "50.0")
         ));
 
         return registry;
     }
 
     private static int intParam(Map<String, Object> parameters, String key, int defaultValue) {
+        if (parameters == null) return defaultValue;
         Object value = parameters.get(key);
-        if (value == null) {
-            return defaultValue;
-        }
-        return Integer.parseInt(value.toString());
+        if (value instanceof Number number) return number.intValue();
+        return value != null ? Integer.parseInt(value.toString()) : defaultValue;
     }
 
     private static BigDecimal bigDecimalParam(Map<String, Object> parameters, String key, String defaultValue) {
+        if (parameters == null) return new BigDecimal(defaultValue);
         Object value = parameters.get(key);
         return new BigDecimal(value != null ? value.toString() : defaultValue);
     }

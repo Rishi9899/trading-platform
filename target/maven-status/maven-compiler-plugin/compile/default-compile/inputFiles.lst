@@ -29,6 +29,11 @@ D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\do
 D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\domain\trade\Trade.java
 D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\domain\trade\TradeRepository.java
 D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\domain\trade\TradeSide.java
+D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\evaluation\PerformanceTrackingSignalListener.java
+D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\evaluation\SimulatedPosition.java
+D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\evaluation\StrategyEvaluator.java
+D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\evaluation\StrategyPerformance.java
+D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\evaluation\TradeSimulator.java
 D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\eventing\TickEventQueue.java
 D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\indicator\ExponentialMovingAverage.java
 D:\trading-platform-phase1\trading-platform\src\main\java\com\tradingplatform\indicator\Indicator.java
