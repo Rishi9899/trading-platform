@@ -1,10 +1,6 @@
 package com.tradingplatform.strategy;
 
-import com.tradingplatform.strategy.impl.BollingerBreakoutStrategy;
-import com.tradingplatform.strategy.impl.CandleDirectionStrategy;
-import com.tradingplatform.strategy.impl.EmaCrossoverStrategy;
-import com.tradingplatform.strategy.impl.MacdMomentumStrategy;
-import com.tradingplatform.strategy.impl.TrendConfirmedEmaCrossoverStrategy;
+import com.tradingplatform.strategy.impl.*;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -14,9 +10,13 @@ import java.util.Map;
 @Configuration
 public class StrategyRegistryConfig {
 
+
+
     @Bean
     public StrategyRegistry strategyRegistry() {
         StrategyRegistry registry = new StrategyRegistry();
+
+
 
         registry.register("candle-direction", parameters -> new CandleDirectionStrategy());
 
@@ -51,6 +51,13 @@ public class StrategyRegistryConfig {
                 intParam(parameters, "trendPeriod", 10)
         ));
 
+        registry.register("donchian-breakout", parameters -> new DonchianBreakoutStrategy(
+                intParam(parameters, "entryPeriod", 55),
+                intParam(parameters, "exitPeriod", 20),
+                intParam(parameters, "atrPeriod", 20),
+                doubleParam(parameters, "minAtrFraction", 0.5)
+        ));
+
         return registry;
     }
 
@@ -65,5 +72,13 @@ public class StrategyRegistryConfig {
         if (parameters == null) return new BigDecimal(defaultValue);
         Object value = parameters.get(key);
         return new BigDecimal(value != null ? value.toString() : defaultValue);
+    }
+
+
+    private static double doubleParam(Map<String, Object> parameters, String key, double defaultValue) {
+        if (parameters == null) return defaultValue;
+        Object value = parameters.get(key);
+        if (value instanceof Number number) return number.doubleValue();
+        return value != null ? Double.parseDouble(value.toString()) : defaultValue;
     }
 }

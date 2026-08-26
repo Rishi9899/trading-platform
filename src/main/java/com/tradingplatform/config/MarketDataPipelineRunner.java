@@ -8,6 +8,7 @@ import com.tradingplatform.candle.TimeframeParser;
 import com.tradingplatform.domain.candle.Candle;
 import com.tradingplatform.domain.candle.MarketCandleRepository;
 import com.tradingplatform.domain.signal.SignalRepository;
+import com.tradingplatform.domain.trade.TradeRepository;
 import com.tradingplatform.evaluation.PerformanceTrackingSignalListener;
 import com.tradingplatform.eventing.TickEventQueue;
 import com.tradingplatform.marketdata.FakeTickGenerator;
@@ -16,8 +17,10 @@ import com.tradingplatform.marketdata.fyers.FyersSidecarTickSource;
 import com.tradingplatform.strategy.LoggingSignalListener;
 import com.tradingplatform.strategy.PersistingSignalListener;
 import com.tradingplatform.strategy.StrategyEngine;
+import com.tradingplatform.strategy.TradePersistingSignalListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -64,6 +67,12 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
         this.strategyEngine = strategyEngine;
     }
 
+    @Autowired
+    private PerformanceTrackingSignalListener performanceTrackingSignalListener;
+
+    @Autowired
+    private TradeRepository tradeRepository;
+
     @Override
     public void run(String... args) {
         var baseTimeframeSeconds = properties.getCandle().getTimeframeSeconds();
@@ -88,7 +97,10 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
         // 1. Signal listeners
         strategyEngine.addSignalListener(new LoggingSignalListener());
         strategyEngine.addSignalListener(new PersistingSignalListener(signalRepository));
-        strategyEngine.addSignalListener(new PerformanceTrackingSignalListener());
+        strategyEngine.addSignalListener(performanceTrackingSignalListener);  // injected bean
+        strategyEngine.addSignalListener(new TradePersistingSignalListener(tradeRepository));
+
+
 
         // 2. Hook live tick flow (Tick -> EventQueue -> CandleBuilder -> StrategyEngine)
         tickSource.addListener(tickEventQueue);

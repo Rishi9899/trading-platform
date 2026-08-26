@@ -22,36 +22,24 @@ logging:
 
 app:
   tick:
-    source: fyers-sidecar   # fake | fyers-sidecar
+    source: fyers-sidecar
     symbols:
       - NSE:NIFTY50-INDEX
       - NSE:NIFTYBANK-INDEX
+      - NSE:FINNIFTY-INDEX
+      - NSE:RELIANCE-EQ
+      - NSE:TCS-EQ
+      - NSE:INFY-EQ
+      - NSE:SBIN-EQ
       - MCX:CRUDEOIL26SEPFUT
+      - MCX:GOLD26SEPFUT
+      - MCX:SILVER26SEPFUT
     interval-millis: 500
 
   strategies:
+    # ===== NIFTY50 (3 voters) =====
     - type: ema-crossover
       symbol: NSE:NIFTY50-INDEX
-      timeframe: 5m
-      parameters:
-        fastPeriod: 9
-        slowPeriod: 21
-        rsiPeriod: 14
-        buyRsiThreshold: 50.0
-        sellRsiThreshold: 50.0
-
-    - type: ema-crossover
-      symbol: NSE:NIFTYBANK-INDEX
-      timeframe: 5m
-      parameters:
-        fastPeriod: 9
-        slowPeriod: 21
-        rsiPeriod: 14
-        buyRsiThreshold: 50.0
-        sellRsiThreshold: 50.0
-
-    - type: ema-crossover
-      symbol: MCX:CRUDEOIL26SEPFUT
       timeframe: 5m
       parameters:
         fastPeriod: 9
@@ -63,7 +51,7 @@ app:
     - type: ema-crossover-mtf
       symbol: NSE:NIFTY50-INDEX
       timeframe: 5m
-      confirmationTimeframe: 15m   # downgrades signals that fight the 15m trend to HOLD
+      confirmationTimeframe: 15m
       parameters:
         fastPeriod: 9
         slowPeriod: 21
@@ -72,11 +60,311 @@ app:
         sellRsiThreshold: 50.0
         trendPeriod: 10
 
+    - type: macd-momentum
+      symbol: NSE:NIFTY50-INDEX
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    # ===== NIFTYBANK (3 voters) =====
+    - type: ema-crossover
+      symbol: NSE:NIFTYBANK-INDEX
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: ema-crossover-mtf
+      symbol: NSE:NIFTYBANK-INDEX
+      timeframe: 5m
+      confirmationTimeframe: 15m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+        trendPeriod: 10
+
+    - type: bollinger-breakout
+      symbol: NSE:NIFTYBANK-INDEX
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.0
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== FINNIFTY (3 voters) =====
+    - type: ema-crossover
+      symbol: NSE:FINNIFTY-INDEX
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: macd-momentum
+      symbol: NSE:FINNIFTY-INDEX
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    - type: bollinger-breakout
+      symbol: NSE:FINNIFTY-INDEX
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.0
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== RELIANCE (3 voters) =====
+    - type: ema-crossover
+      symbol: NSE:RELIANCE-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: macd-momentum
+      symbol: NSE:RELIANCE-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    - type: bollinger-breakout
+      symbol: NSE:RELIANCE-EQ
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.0
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== TCS (3 voters) =====
+    - type: ema-crossover
+      symbol: NSE:TCS-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: macd-momentum
+      symbol: NSE:TCS-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    - type: bollinger-breakout
+      symbol: NSE:TCS-EQ
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.0
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== INFY (3 voters) =====
+    - type: ema-crossover
+      symbol: NSE:INFY-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: macd-momentum
+      symbol: NSE:INFY-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    - type: bollinger-breakout
+      symbol: NSE:INFY-EQ
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.0
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== SBIN (3 voters) =====
+    - type: ema-crossover
+      symbol: NSE:SBIN-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: macd-momentum
+      symbol: NSE:SBIN-EQ
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.3
+
+    - type: bollinger-breakout
+      symbol: NSE:SBIN-EQ
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.0
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== CRUDE OIL (4 voters) =====
+    - type: donchian-breakout
+      symbol: MCX:CRUDEOIL26SEPFUT
+      timeframe: 5m
+      parameters:
+        entryPeriod: 55
+        exitPeriod: 20
+        atrPeriod: 20
+        minAtrFraction: 0.5
+
+    - type: ema-crossover
+      symbol: MCX:CRUDEOIL26SEPFUT
+      timeframe: 5m
+      parameters:
+        fastPeriod: 9
+        slowPeriod: 21
+        rsiPeriod: 14
+        buyRsiThreshold: 50.0
+        sellRsiThreshold: 50.0
+
+    - type: macd-momentum
+      symbol: MCX:CRUDEOIL26SEPFUT
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    - type: bollinger-breakout
+      symbol: MCX:CRUDEOIL26SEPFUT
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.0
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== GOLD (4 voters) =====
+    - type: donchian-breakout
+      symbol: MCX:GOLD26SEPFUT
+      timeframe: 5m
+      parameters:
+        entryPeriod: 55
+        exitPeriod: 20
+        atrPeriod: 20
+        minAtrFraction: 0.5
+
+    - type: ema-crossover
+      symbol: MCX:GOLD26SEPFUT
+      timeframe: 5m
+      parameters:
+        fastPeriod: 13
+        slowPeriod: 34
+        rsiPeriod: 14
+        buyRsiThreshold: 45.0
+        sellRsiThreshold: 55.0
+
+    - type: macd-momentum
+      symbol: MCX:GOLD26SEPFUT
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    - type: bollinger-breakout
+      symbol: MCX:GOLD26SEPFUT
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.5
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
+    # ===== SILVER (4 voters) =====
+    - type: donchian-breakout
+      symbol: MCX:SILVER26SEPFUT
+      timeframe: 5m
+      parameters:
+        entryPeriod: 55
+        exitPeriod: 20
+        atrPeriod: 20
+        minAtrFraction: 0.5
+
+    - type: ema-crossover
+      symbol: MCX:SILVER26SEPFUT
+      timeframe: 5m
+      parameters:
+        fastPeriod: 13
+        slowPeriod: 34
+        rsiPeriod: 14
+        buyRsiThreshold: 45.0
+        sellRsiThreshold: 55.0
+
+    - type: macd-momentum
+      symbol: MCX:SILVER26SEPFUT
+      timeframe: 5m
+      parameters:
+        fastPeriod: 12
+        slowPeriod: 26
+        signalPeriod: 9
+        histogramScale: 0.5
+
+    - type: bollinger-breakout
+      symbol: MCX:SILVER26SEPFUT
+      timeframe: 5m
+      parameters:
+        bandPeriod: 20
+        stdDevMultiplier: 2.5
+        atrPeriod: 14
+        minBandWidthAtrMultiple: 1.5
+
   candle:
-    timeframe-seconds: 60       # Base candle = 1 minute (60s)
+    timeframe-seconds: 60
     derived-timeframes:
-      - "5m"                   # Derived higher timeframe = 5 minutes (300s)
-      - "15m"                  # Confirmation timeframe for multi-timeframe strategies
+      - "5m"
+      - "15m"
 
   queue:
     capacity: 1000
