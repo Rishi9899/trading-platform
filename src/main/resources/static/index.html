@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Trading Strategy Visualizer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #131722; color: #d1d4dc; }
+        .header-container { display: flex; align-items: center; gap: 15px; margin-bottom: 10px; }
+        h1 { color: #26a69a; font-size: 20px; margin: 0; }
+        select { background: #1e222d; color: #d1d4dc; border: 1px solid #2a2e39; padding: 6px 10px; border-radius: 4px; font-size: 14px; cursor: pointer; }
+        #status { font-size: 13px; color: #848e9c; margin-bottom: 15px; }
+        #chart-container { width: 100%; height: 550px; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; }
+    </style>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+<div class="header-container">
+    <h1>Strategy Visualizer</h1>
+    <select id="symbol-select">
+        <option value="MCX:CRUDEOIL26SEPFUT">MCX: CRUDEOIL26SEPFUT</option>
+        <option value="NSE:NIFTY50-INDEX">NSE: NIFTY 50 Index</option>
+        <option value="NSE:NIFTYBANK-INDEX">NSE: NIFTY Bank Index</option>
+    </select>
+</div>
+
+<p id="status">Initializing...</p>
+<div id="chart-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

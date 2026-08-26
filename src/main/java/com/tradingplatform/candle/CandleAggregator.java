@@ -71,7 +71,28 @@ public class CandleAggregator implements CandleListener {
         if (bucket.baseCandles.isEmpty()) {
             return;
         }
+        buildAndDispatch(symbol, bucket);
+    }
 
+    /**
+     * Manually flushes whatever candles have accumulated in the current
+     * in-progress bucket for a symbol, without waiting for a subsequent
+     * candle to arrive and signal the window closed. Needed when replaying
+     * a finite historical batch: the last bucket in that batch has no
+     * "next" candle to trigger the normal flush path in onCandleClosed, so
+     * it would otherwise sit unflushed forever. Removes the bucket after
+     * flushing (fresh state for any following replay/live use), and
+     * returns the resulting candle, or null if there was nothing pending.
+     */
+    public Candle flushPending(String symbol) {
+        WindowBucket bucket = bucketsBySymbol.remove(symbol);
+        if (bucket == null || bucket.baseCandles.isEmpty()) {
+            return null;
+        }
+        return buildAndDispatch(symbol, bucket);
+    }
+
+    private Candle buildAndDispatch(String symbol, WindowBucket bucket) {
         List<Candle> completeBaseList = synthesizeMissingBaseCandles(symbol, bucket);
 
         BigDecimal open = completeBaseList.get(0).getOpen();
@@ -101,6 +122,8 @@ public class CandleAggregator implements CandleListener {
         for (CandleListener listener : listeners) {
             listener.onCandleClosed(aggregated);
         }
+
+        return aggregated;
     }
 
     private List<Candle> synthesizeMissingBaseCandles(String symbol, WindowBucket bucket) {

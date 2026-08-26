@@ -62,10 +62,21 @@ public class StrategyInstanceLoader {
             StrategyInstance strategyInstance = findOrCreate(instanceConfig);
             TradingStrategy strategy = strategyRegistry.create(instanceConfig.getType(), instanceConfig.getParameters());
 
-            engine.register(strategyInstance, strategy);
-            log.info("Registered strategy instance id={} type={} symbol={} timeframe={}",
+            String confirmationTimeframe = instanceConfig.getConfirmationTimeframe();
+            if (confirmationTimeframe != null && !availableTimeframes.contains(confirmationTimeframe)) {
+                // Soft dependency: the strategy still runs on its primary timeframe, it just
+                // won't see any higher-timeframe data until that timeframe is actually produced.
+                log.warn("Strategy config type={} symbol={} confirmationTimeframe={} is not produced "
+                                + "by this pipeline (available: {}) - registering without confirmation data.",
+                        instanceConfig.getType(), instanceConfig.getSymbol(), confirmationTimeframe,
+                        availableTimeframes);
+                confirmationTimeframe = null;
+            }
+
+            engine.register(strategyInstance, strategy, confirmationTimeframe);
+            log.info("Registered strategy instance id={} type={} symbol={} timeframe={} confirmationTimeframe={}",
                     strategyInstance.getId(), instanceConfig.getType(),
-                    instanceConfig.getSymbol(), instanceConfig.getTimeframe());
+                    instanceConfig.getSymbol(), instanceConfig.getTimeframe(), confirmationTimeframe);
         }
     }
 

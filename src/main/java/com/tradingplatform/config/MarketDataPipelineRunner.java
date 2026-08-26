@@ -22,11 +22,14 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @EnableConfigurationProperties(MarketDataProperties.class)
@@ -34,19 +37,31 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(MarketDataPipelineRunner.class);
 
+    // The Fyers sidecar only ever sends historical candles pre-aggregated at this
+    // granularity - it is NOT the same as app.candle.timeframe-seconds (the live
+    // base timeframe, typically 1m). Any derived timeframe that's a whole multiple
+    // of this can be backfilled with real history by aggregating this batch;
+    // anything finer than this (or not a clean multiple) simply won't have
+    // historical data and will build up from live ticks only, same as before.
+    private static final Duration HISTORICAL_CANDLE_TIMEFRAME = Duration.ofMinutes(5);
+    private static final String HISTORICAL_CANDLE_LABEL = "5m";
+
     private final MarketDataProperties properties;
     private final MarketCandleRepository marketCandleRepository;
     private final SignalRepository signalRepository;
     private final StrategyInstanceLoader strategyInstanceLoader;
+    private final StrategyEngine strategyEngine;
 
     public MarketDataPipelineRunner(MarketDataProperties properties,
                                     MarketCandleRepository marketCandleRepository,
                                     SignalRepository signalRepository,
-                                    StrategyInstanceLoader strategyInstanceLoader) {
+                                    StrategyInstanceLoader strategyInstanceLoader,
+                                    StrategyEngine strategyEngine) {
         this.properties = properties;
         this.marketCandleRepository = marketCandleRepository;
         this.signalRepository = signalRepository;
         this.strategyInstanceLoader = strategyInstanceLoader;
+        this.strategyEngine = strategyEngine;
     }
 
     @Override
@@ -69,7 +84,6 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
         TickSource tickSource = buildTickSource(source);
         TickEventQueue tickEventQueue = new TickEventQueue(queueCapacity);
         CandleBuilder candleBuilder = new CandleBuilder(baseTimeframe, baseLabel);
-        StrategyEngine strategyEngine = new StrategyEngine(50);
 
         // 1. Signal listeners
         strategyEngine.addSignalListener(new LoggingSignalListener());
@@ -93,22 +107,109 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
             candleBuilder.addListener(aggregator);
         }
 
-        // 4. Hook Historical flow DIRECTLY to StrategyEngine (Bypasses CandleBuilder!)
+        // 3b. Which derived timeframes can be backfilled with REAL history, by
+        // rolling up the 5m historical batches the sidecar sends? Only ones that
+        // are a whole multiple of that 5m granularity (10m, 15m, 30m, ...) and
+        // aren't 5m itself (which is already backfilled directly below).
+        Map<String, Duration> backfillableDerivedTimeframes = new java.util.LinkedHashMap<>();
+        for (String label : derivedTimeframeLabels) {
+            if (label.equals(HISTORICAL_CANDLE_LABEL)) {
+                continue;
+            }
+            Duration derivedTimeframe = TimeframeParser.parse(label);
+            boolean isWholeMultiple = derivedTimeframe.getSeconds() > HISTORICAL_CANDLE_TIMEFRAME.getSeconds()
+                    && derivedTimeframe.getSeconds() % HISTORICAL_CANDLE_TIMEFRAME.getSeconds() == 0;
+            if (isWholeMultiple) {
+                backfillableDerivedTimeframes.put(label, derivedTimeframe);
+            } else {
+                log.info("Derived timeframe {} is not a whole multiple of the {} historical candle "
+                                + "granularity - it will only build up from live ticks, no historical backfill.",
+                        label, HISTORICAL_CANDLE_LABEL);
+            }
+        }
+
+        // 4. Hook Historical flow Multi-Chunk Aggregation
         if (tickSource instanceof FyersSidecarTickSource fyersSource) {
+            // Tracks symbols actively streaming chunked historical batches
+            Set<String> activeWarmups = ConcurrentHashMap.newKeySet();
+
+            // One dedicated CandleAggregator per (symbol, derived label) purely for
+            // replaying historical 5m batches into higher-timeframe candles. Kept
+            // entirely separate from the live aggregators in step 3, so historical
+            // replay can never corrupt a live in-progress window.
+            Map<String, Map<String, HistoricalRollup>> historicalRollups = new ConcurrentHashMap<>();
+
             fyersSource.addHistoryListener(new FyersSidecarTickSource.HistoricalDataListener() {
                 @Override
-                public void onHistoricalCandle(String symbol, Instant timestamp, BigDecimal open,
-                                               BigDecimal high, BigDecimal low, BigDecimal close, long volume) {
-                    // Reconstruct 5-minute historical candle (matches sidecar resolution)
-                    Instant windowEnd = timestamp.plus(Duration.ofMinutes(5));
-                    Candle historicalCandle = new Candle(symbol, "5m", timestamp, windowEnd, open, high, low, close, volume);
+                public void onHistoricalBatchReceived(String symbol, List<FyersSidecarTickSource.HistoricalCandleData> candleBatch) {
+                    List<Candle> domainCandles = candleBatch.stream()
+                            .map(data -> {
+                                Instant windowEnd = data.timestamp().plus(HISTORICAL_CANDLE_TIMEFRAME);
+                                return new Candle(
+                                        symbol,
+                                        HISTORICAL_CANDLE_LABEL,
+                                        data.timestamp(),
+                                        windowEnd,
+                                        data.open(),
+                                        data.high(),
+                                        data.low(),
+                                        data.close(),
+                                        data.volume()
+                                );
+                            })
+                            .toList();
 
-                    // Seed indicator history directly without firing strategy evaluations
-                    strategyEngine.seedHistoricalCandle(historicalCandle);
+                    // Replace/clear history on chunk 1, append for subsequent chunks
+                    boolean firstChunk = activeWarmups.add(symbol);
+                    if (firstChunk) {
+                        strategyEngine.replaceHistoricalCandles(symbol, HISTORICAL_CANDLE_LABEL, domainCandles);
+                    } else {
+                        strategyEngine.appendHistoricalCandles(symbol, HISTORICAL_CANDLE_LABEL, domainCandles);
+                    }
+
+                    // Roll the same 5m batch up into every backfillable derived timeframe
+                    Map<String, HistoricalRollup> rollupsForSymbol = historicalRollups
+                            .computeIfAbsent(symbol, s -> new ConcurrentHashMap<>());
+
+                    for (Map.Entry<String, Duration> entry : backfillableDerivedTimeframes.entrySet()) {
+                        String label = entry.getKey();
+                        HistoricalRollup rollup = rollupsForSymbol.computeIfAbsent(label,
+                                l -> new HistoricalRollup(
+                                        new CandleAggregator(HISTORICAL_CANDLE_TIMEFRAME, entry.getValue(), l)));
+
+                        // The aggregator's listener is wired once, at creation, straight to
+                        // this sink - not re-added per chunk, or multi-chunk symbols would
+                        // get the same aggregated candles delivered multiple times.
+                        rollup.sink.clear();
+                        for (Candle baseCandle : domainCandles) {
+                            rollup.aggregator.onCandleClosed(baseCandle);
+                        }
+
+                        if (firstChunk) {
+                            strategyEngine.replaceHistoricalCandles(symbol, label, List.copyOf(rollup.sink));
+                        } else if (!rollup.sink.isEmpty()) {
+                            strategyEngine.appendHistoricalCandles(symbol, label, List.copyOf(rollup.sink));
+                        }
+                    }
                 }
 
                 @Override
                 public void onHistoryComplete(String symbol) {
+                    activeWarmups.remove(symbol); // Reset tracker for future reconnects/warmups
+
+                    // The final in-progress bucket for each derived timeframe never got a
+                    // "next candle" to trigger its flush during replay - flush it manually
+                    // now that we know no more historical candles are coming.
+                    Map<String, HistoricalRollup> rollupsForSymbol = historicalRollups.remove(symbol);
+                    if (rollupsForSymbol != null) {
+                        for (Map.Entry<String, HistoricalRollup> entry : rollupsForSymbol.entrySet()) {
+                            Candle finalCandle = entry.getValue().aggregator.flushPending(symbol);
+                            if (finalCandle != null) {
+                                strategyEngine.appendHistoricalCandles(symbol, entry.getKey(), List.of(finalCandle));
+                            }
+                        }
+                    }
+
                     log.info("Historical warmup completed for {}. Indicators primed and ready for live market open.", symbol);
                     strategyEngine.markWarmupComplete(symbol);
                 }
@@ -135,5 +236,22 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
             );
             default -> throw new IllegalArgumentException("Unknown app.tick.source: " + source);
         };
+    }
+
+    /**
+     * Pairs a historical-replay CandleAggregator with the single sink its
+     * listener writes into. The listener is wired once, at construction -
+     * each chunk just clears the sink, feeds candles through, then reads
+     * back whatever landed. Keeps a listener from ever being registered
+     * more than once per aggregator across multiple historical chunks.
+     */
+    private static final class HistoricalRollup {
+        final CandleAggregator aggregator;
+        final List<Candle> sink = new ArrayList<>();
+
+        HistoricalRollup(CandleAggregator aggregator) {
+            this.aggregator = aggregator;
+            this.aggregator.addListener(sink::add);
+        }
     }
 }

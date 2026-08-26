@@ -15,6 +15,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -36,8 +37,18 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
     private ScheduledExecutorService reconnectExecutor;
     private StandardWebSocketClient client;
 
+    public record HistoricalCandleData(
+            String symbol,
+            Instant timestamp,
+            BigDecimal open,
+            BigDecimal high,
+            BigDecimal low,
+            BigDecimal close,
+            long volume
+    ) {}
+
     public interface HistoricalDataListener {
-        void onHistoricalCandle(String symbol, Instant timestamp, BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close, long volume);
+        void onHistoricalBatchReceived(String symbol, List<HistoricalCandleData> candleBatch);
         void onHistoryComplete(String symbol);
     }
 
@@ -84,6 +95,8 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
         JsonNode candlesNode = root.get("candles");
 
         if (candlesNode != null && candlesNode.isArray()) {
+            List<HistoricalCandleData> batch = new ArrayList<>(candlesNode.size());
+
             for (JsonNode node : candlesNode) {
                 Instant ts = Instant.ofEpochMilli(node.get("timestamp").asLong());
                 BigDecimal open = BigDecimal.valueOf(node.get("open").asDouble());
@@ -92,11 +105,14 @@ public class FyersSidecarTickSource extends TextWebSocketHandler implements Tick
                 BigDecimal close = BigDecimal.valueOf(node.get("close").asDouble());
                 long volume = node.get("volume").asLong();
 
-                for (HistoricalDataListener listener : historyListeners) {
-                    listener.onHistoricalCandle(symbol, ts, open, high, low, close, volume);
-                }
+                batch.add(new HistoricalCandleData(symbol, ts, open, high, low, close, volume));
             }
-            log.info("Received batch of {} historical candles for {}", candlesNode.size(), symbol);
+
+            // Flush complete batch snapshot to all history listeners
+            for (HistoricalDataListener listener : historyListeners) {
+                listener.onHistoricalBatchReceived(symbol, batch);
+            }
+            log.info("Received and dispatched snapshot batch of {} historical candles for {}", batch.size(), symbol);
         }
     }
 

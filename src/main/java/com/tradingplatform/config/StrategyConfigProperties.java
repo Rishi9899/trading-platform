@@ -24,6 +24,7 @@ public class StrategyConfigProperties {
         private String type;
         private String symbol;
         private String timeframe;
+        private String confirmationTimeframe;
         private Map<String, Object> parameters = new HashMap<>();
 
         public String getType() {
@@ -48,6 +49,20 @@ public class StrategyConfigProperties {
 
         public void setTimeframe(String timeframe) {
             this.timeframe = timeframe;
+        }
+
+        /**
+         * Optional coarser timeframe (e.g. "15m" for a "5m" strategy) this
+         * instance can read for trend confirmation. Purely additive context -
+         * does not trigger evaluation on its own, and is not persisted on the
+         * StrategyInstance entity since it's engine wiring, not instance state.
+         */
+        public String getConfirmationTimeframe() {
+            return confirmationTimeframe;
+        }
+
+        public void setConfirmationTimeframe(String confirmationTimeframe) {
+            this.confirmationTimeframe = confirmationTimeframe;
         }
 
         public Map<String, Object> getParameters() {

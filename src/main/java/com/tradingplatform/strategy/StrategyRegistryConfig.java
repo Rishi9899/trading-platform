@@ -1,7 +1,10 @@
 package com.tradingplatform.strategy;
 
+import com.tradingplatform.strategy.impl.BollingerBreakoutStrategy;
 import com.tradingplatform.strategy.impl.CandleDirectionStrategy;
 import com.tradingplatform.strategy.impl.EmaCrossoverStrategy;
+import com.tradingplatform.strategy.impl.MacdMomentumStrategy;
+import com.tradingplatform.strategy.impl.TrendConfirmedEmaCrossoverStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -23,6 +26,29 @@ public class StrategyRegistryConfig {
                 intParam(parameters, "rsiPeriod", 14),
                 bigDecimalParam(parameters, "buyRsiThreshold", "50.0"),
                 bigDecimalParam(parameters, "sellRsiThreshold", "50.0")
+        ));
+
+        registry.register("macd-momentum", parameters -> new MacdMomentumStrategy(
+                intParam(parameters, "fastPeriod", 12),
+                intParam(parameters, "slowPeriod", 26),
+                intParam(parameters, "signalPeriod", 9),
+                bigDecimalParam(parameters, "histogramScale", "0.5")
+        ));
+
+        registry.register("bollinger-breakout", parameters -> new BollingerBreakoutStrategy(
+                intParam(parameters, "bandPeriod", 20),
+                bigDecimalParam(parameters, "stdDevMultiplier", "2.0"),
+                intParam(parameters, "atrPeriod", 14),
+                bigDecimalParam(parameters, "minBandWidthAtrMultiple", "1.5")
+        ));
+
+        registry.register("ema-crossover-mtf", parameters -> new TrendConfirmedEmaCrossoverStrategy(
+                intParam(parameters, "fastPeriod", 9),
+                intParam(parameters, "slowPeriod", 21),
+                intParam(parameters, "rsiPeriod", 14),
+                bigDecimalParam(parameters, "buyRsiThreshold", "50.0"),
+                bigDecimalParam(parameters, "sellRsiThreshold", "50.0"),
+                intParam(parameters, "trendPeriod", 10)
         ));
 
         return registry;

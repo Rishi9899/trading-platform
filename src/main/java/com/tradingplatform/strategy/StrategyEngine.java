@@ -6,6 +6,7 @@ import com.tradingplatform.domain.signal.Signal;
 import com.tradingplatform.domain.strategy.StrategyInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -16,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
+@Component
 public class StrategyEngine implements CandleListener {
 
     private static final Logger log = LoggerFactory.getLogger(StrategyEngine.class);
@@ -23,32 +25,93 @@ public class StrategyEngine implements CandleListener {
 
     private final Map<String, List<StrategyBinding>> bindingsByKey = new ConcurrentHashMap<>();
     private final List<SignalListener> signalListeners = new CopyOnWriteArrayList<>();
+
+    // Engine Stream Listeners (for streaming exact engine candles to UI/WebSocket/SSE)
+    private final List<CandleStreamListener> candleStreamListeners = new CopyOnWriteArrayList<>();
+
     private final Map<String, Deque<Candle>> historyByKey = new ConcurrentHashMap<>();
     private final Map<String, Boolean> warmupStatusBySymbol = new ConcurrentHashMap<>();
     private final int maxHistoryPerKey;
 
     private final AtomicLong totalStrategyCount = new AtomicLong();
 
+    /**
+     * Default constructor for Spring Boot Component Scanning
+     */
+    public StrategyEngine() {
+        this(150);
+    }
+
     public StrategyEngine(int maxHistoryPerKey) {
         this.maxHistoryPerKey = maxHistoryPerKey;
     }
 
     /**
-     * Populates history buffers without firing strategy evaluations or signals.
+     * Functional interface for streaming engine candles externally (e.g., to Visualizer UI).
+     */
+    @FunctionalInterface
+    public interface CandleStreamListener {
+        void onCandle(Candle candle);
+    }
+
+    public void addCandleStreamListener(CandleStreamListener listener) {
+        this.candleStreamListeners.add(listener);
+    }
+
+    public void removeCandleStreamListener(CandleStreamListener listener) {
+        this.candleStreamListeners.remove(listener);
+    }
+    /**
+     * Thread-safe snapshot getter for UI history baseline endpoints.
+     */
+    public List<Candle> getHistorySnapshot(String symbol, String timeframe) {
+        String key = key(symbol, timeframe);
+        Deque<Candle> history = historyByKey.get(key);
+        if (history == null) {
+            return List.of();
+        }
+        synchronized (history) {
+            return List.copyOf(history);
+        }
+    }
+
+    /**
+     * Completely clears existing historical buffer for symbol/timeframe and populates
+     * a fresh batch. Prevents duplicate candles without running O(N) list searches.
+     */
+    public void replaceHistoricalCandles(String symbol, String timeframe, List<Candle> candleBatch) {
+        String key = key(symbol, timeframe);
+        Deque<Candle> history = historyByKey.computeIfAbsent(key, k -> new ArrayDeque<>());
+
+        synchronized (history) {
+            history.clear(); // Wipe clean on new snapshot batch
+            for (Candle candle : candleBatch) {
+                history.addLast(candle);
+                while (history.size() > maxHistoryPerKey) {
+                    history.removeFirst();
+                }
+                // Notify visualizer UI stream listeners per seeded candle
+                notifyStreamListeners(candle);
+            }
+        }
+        log.info("StrategyEngine: History replaced for key {} with {} candles.", key, history.size());
+    }
+
+    /**
+     * Single candle historical seed method.
      */
     public void seedHistoricalCandle(Candle candle) {
         String key = key(candle.getSymbol(), candle.getTimeframe());
         Deque<Candle> history = historyByKey.computeIfAbsent(key, k -> new ArrayDeque<>());
 
-        // Prevent duplicate candles
-        if (!history.isEmpty() && history.peekLast().getWindowStart().equals(candle.getWindowStart())) {
-            return;
+        synchronized (history) {
+            history.addLast(candle);
+            while (history.size() > maxHistoryPerKey) {
+                history.removeFirst();
+            }
         }
 
-        history.addLast(candle);
-        while (history.size() > maxHistoryPerKey) {
-            history.removeFirst();
-        }
+        notifyStreamListeners(candle);
     }
 
     public void markWarmupComplete(String symbol) {
@@ -57,9 +120,23 @@ public class StrategyEngine implements CandleListener {
     }
 
     public void register(StrategyInstance strategyInstance, TradingStrategy strategy) {
+        register(strategyInstance, strategy, null);
+    }
+
+    /**
+     * Registers a strategy bound to its own symbol+timeframe (the trigger that
+     * causes evaluate() to run), optionally also given read-only visibility
+     * into a coarser confirmationTimeframe's history via MarketContext. The
+     * confirmation timeframe never triggers evaluation by itself - it's just
+     * whatever history happens to be in historyByKey at the moment the
+     * primary candle closes, so that timeframe must already be produced by
+     * the pipeline (e.g. listed in app.candle.derived-timeframes) or this
+     * strategy will simply see an empty higherTimeframeCandles list.
+     */
+    public void register(StrategyInstance strategyInstance, TradingStrategy strategy, String confirmationTimeframe) {
         String key = key(strategyInstance.getSymbol(), strategyInstance.getTimeframe());
         bindingsByKey.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>())
-                .add(new StrategyBinding(strategyInstance, strategy));
+                .add(new StrategyBinding(strategyInstance, strategy, confirmationTimeframe));
         totalStrategyCount.incrementAndGet();
     }
 
@@ -76,10 +153,18 @@ public class StrategyEngine implements CandleListener {
         String key = key(candle.getSymbol(), candle.getTimeframe());
 
         Deque<Candle> history = historyByKey.computeIfAbsent(key, k -> new ArrayDeque<>());
-        history.addLast(candle);
-        while (history.size() > maxHistoryPerKey) {
-            history.removeFirst();
+
+        List<Candle> historySnapshot;
+        synchronized (history) {
+            history.addLast(candle);
+            while (history.size() > maxHistoryPerKey) {
+                history.removeFirst();
+            }
+            historySnapshot = List.copyOf(history);
         }
+
+        // Broadcast the exact closed live candle to UI visualizer
+        notifyStreamListeners(candle);
 
         List<StrategyBinding> matching = bindingsByKey.get(key);
         if (matching == null || matching.isEmpty()) {
@@ -92,11 +177,12 @@ public class StrategyEngine implements CandleListener {
             return;
         }
 
-        MarketContext context = new MarketContext(candle.getSymbol(), candle, List.copyOf(history));
+        MarketContext baseContext = new MarketContext(candle.getSymbol(), candle, historySnapshot);
 
         long startNanos = System.nanoTime();
         List<Signal> signals = new ArrayList<>(matching.size());
         for (StrategyBinding binding : matching) {
+            MarketContext context = contextFor(binding, baseContext, candle);
             Signal signal = evaluateOne(binding, context, candle);
             if (signal != null) {
                 signals.add(signal);
@@ -114,6 +200,35 @@ public class StrategyEngine implements CandleListener {
                     log.error("SignalListener threw while handling signal for strategy instance {}: {}",
                             signal.getStrategyInstance().getId(), e.getMessage(), e);
                 }
+            }
+        }
+    }
+
+    /**
+     * Builds a per-binding context: reuses the shared base context for
+     * strategies with no confirmation timeframe (the common case, no extra
+     * lookup), otherwise attaches a snapshot of the confirmation timeframe's
+     * current history. That history is a plain map read - it's whatever the
+     * confirmation timeframe's own onCandleClosed calls have accumulated so
+     * far, no coupling to this binding's evaluation cadence.
+     */
+    private MarketContext contextFor(StrategyBinding binding, MarketContext baseContext, Candle candle) {
+        String confirmationTimeframe = binding.confirmationTimeframe();
+        if (confirmationTimeframe == null || confirmationTimeframe.isBlank()) {
+            return baseContext;
+        }
+        List<Candle> higherTimeframeCandles = getHistorySnapshot(candle.getSymbol(), confirmationTimeframe);
+        return new MarketContext(candle.getSymbol(), candle, baseContext.recentCandles(),
+                confirmationTimeframe, higherTimeframeCandles);
+    }
+
+    private void notifyStreamListeners(Candle candle) {
+        for (CandleStreamListener listener : candleStreamListeners) {
+            try {
+                listener.onCandle(candle);
+            } catch (Exception e) {
+                log.error("CandleStreamListener threw while handling candle for {}: {}",
+                        candle.getSymbol(), e.getMessage(), e);
             }
         }
     }
@@ -155,10 +270,44 @@ public class StrategyEngine implements CandleListener {
         }
     }
 
-    private static String key(String symbol, String timeframe) {
-        return symbol + "|" + timeframe;
+    /**
+     * Appends a batch of candles to existing history without wiping previous chunks.
+     */
+    public void appendHistoricalCandles(String symbol, String timeframe, List<Candle> candleBatch) {
+        String key = key(symbol, timeframe);
+        Deque<Candle> history = historyByKey.computeIfAbsent(key, k -> new ArrayDeque<>());
+
+        synchronized (history) {
+            for (Candle candle : candleBatch) {
+                history.addLast(candle);
+                while (history.size() > maxHistoryPerKey) {
+                    history.removeFirst();
+                }
+                notifyStreamListeners(candle);
+            }
+        }
+        log.info("StrategyEngine: Appended {} historical candles to key {}. Total history size: {}",
+                candleBatch.size(), key, history.size());
     }
 
-    private record StrategyBinding(StrategyInstance strategyInstance, TradingStrategy strategy) {
+    /**
+     * Standardized key builder to avoid string mismatches between symbol and timeframe formats
+     */
+    private static String key(String symbol, String timeframe) {
+        if (symbol == null || timeframe == null) {
+            return "";
+        }
+        String tf = timeframe.trim().toLowerCase();
+        if ("60s".equals(tf)) {
+            tf = "1m"; // Convert 60s to 1m
+        }
+        return symbol.trim().toUpperCase() + "|" + tf;
     }
+
+    private record StrategyBinding(StrategyInstance strategyInstance, TradingStrategy strategy,
+                                   String confirmationTimeframe) {
+    }
+
+
+
 }
