@@ -54,6 +54,16 @@ public class Signal {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    // Confluence metadata (optional, populated by ConfluenceEngine)
+    @Column(name = "confluence_decision_type", length = 16)
+    private String confluenceDecisionType;
+
+    @Column(name = "confluence_agreement_score", precision = 5, scale = 4)
+    private BigDecimal confluenceAgreementScore;
+
+    @Column(name = "confluence_vote_summary", length = 500)
+    private String confluenceVoteSummary;
+
     protected Signal() {
         // required by JPA
     }
@@ -109,5 +119,26 @@ public class Signal {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public String getConfluenceDecisionType() {
+        return confluenceDecisionType;
+    }
+
+    public BigDecimal getConfluenceAgreementScore() {
+        return confluenceAgreementScore;
+    }
+
+    public String getConfluenceVoteSummary() {
+        return confluenceVoteSummary;
+    }
+
+    /**
+     * Apply confluence decision metadata to this signal (called by ConfluenceEngine).
+     */
+    public void applyConfluenceDecision(String decisionType, BigDecimal agreementScore, String voteSummary) {
+        this.confluenceDecisionType = decisionType;
+        this.confluenceAgreementScore = agreementScore;
+        this.confluenceVoteSummary = voteSummary;
     }
 }

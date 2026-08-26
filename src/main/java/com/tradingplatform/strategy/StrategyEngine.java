@@ -4,6 +4,8 @@ import com.tradingplatform.candle.CandleListener;
 import com.tradingplatform.domain.candle.Candle;
 import com.tradingplatform.domain.signal.Signal;
 import com.tradingplatform.domain.strategy.StrategyInstance;
+import com.tradingplatform.strategy.confluence.ConfluenceDecision;
+import com.tradingplatform.strategy.confluence.ConfluenceEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -34,16 +36,19 @@ public class StrategyEngine implements CandleListener {
     private final int maxHistoryPerKey;
 
     private final AtomicLong totalStrategyCount = new AtomicLong();
+    
+    private final ConfluenceEngine confluenceEngine;
 
     /**
      * Default constructor for Spring Boot Component Scanning
      */
-    public StrategyEngine() {
-        this(150);
+    public StrategyEngine(ConfluenceEngine confluenceEngine) {
+        this(150, confluenceEngine);
     }
 
-    public StrategyEngine(int maxHistoryPerKey) {
+    public StrategyEngine(int maxHistoryPerKey, ConfluenceEngine confluenceEngine) {
         this.maxHistoryPerKey = maxHistoryPerKey;
+        this.confluenceEngine = confluenceEngine;
     }
 
     /**
@@ -192,7 +197,20 @@ public class StrategyEngine implements CandleListener {
 
         logTimingIfNotable(candle, matching.size(), elapsedMicros);
 
-        for (Signal signal : signals) {
+        // Pass signals through confluence engine to augment with multi-strategy consensus
+        List<ConfluenceEngine.AugmentedSignal> augmentedSignals = confluenceEngine.augmentSignals(signals);
+
+        for (ConfluenceEngine.AugmentedSignal augmented : augmentedSignals) {
+            Signal signal = augmented.signal();
+            ConfluenceDecision confluenceDecision = augmented.confluenceDecision();
+
+            // Apply confluence metadata to the signal
+            signal.applyConfluenceDecision(
+                    confluenceDecision.type().name(),
+                    java.math.BigDecimal.valueOf(confluenceDecision.weightedAgreementScore()),
+                    confluenceDecision.reason()
+            );
+
             for (SignalListener listener : signalListeners) {
                 try {
                     listener.onSignal(signal);
