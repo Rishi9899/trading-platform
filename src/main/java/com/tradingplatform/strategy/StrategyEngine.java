@@ -8,6 +8,7 @@ import com.tradingplatform.strategy.confluence.ConfluenceDecision;
 import com.tradingplatform.strategy.confluence.ConfluenceEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
@@ -37,17 +38,24 @@ public class StrategyEngine implements CandleListener {
 
     private final AtomicLong totalStrategyCount = new AtomicLong();
     
-    private final ConfluenceEngine confluenceEngine;
+    @Autowired(required = false)
+    private ConfluenceEngine confluenceEngine;
 
     /**
-     * Default constructor for Spring Boot Component Scanning
+     * Default constructor for Spring Boot Component Scanning - confluenceEngine will be set via setter
      */
-    public StrategyEngine(ConfluenceEngine confluenceEngine) {
-        this(150, confluenceEngine);
+    public StrategyEngine() {
+        this(150);
     }
 
-    public StrategyEngine(int maxHistoryPerKey, ConfluenceEngine confluenceEngine) {
+    public StrategyEngine(int maxHistoryPerKey) {
         this.maxHistoryPerKey = maxHistoryPerKey;
+    }
+
+    /**
+     * Setter for ConfluenceEngine injection (optional dependency)
+     */
+    public void setConfluenceEngine(ConfluenceEngine confluenceEngine) {
         this.confluenceEngine = confluenceEngine;
     }
 

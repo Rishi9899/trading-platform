@@ -2,6 +2,8 @@ package com.tradingplatform.strategy.confluence;
 
 import com.tradingplatform.domain.signal.Signal;
 import com.tradingplatform.domain.signal.SignalType;
+import org.springframework.stereotype.Component;
+
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -10,6 +12,7 @@ import java.util.stream.Collectors;
  * Counts votes from multiple strategy signals and calculates weighted agreement.
  * Each strategy's vote is weighted by its track record (performance metrics).
  */
+@Component
 public class VoteAggregator {
 
     /**
