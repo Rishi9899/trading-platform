@@ -49,12 +49,18 @@ class CandleAggregatorTest {
     }
 
     @Test
-    void skipsAnIncompleteWindowInsteadOfEmittingAPartialCandle() {
+    void forwardFillsIncompleteWindowWithSyntheticCandles() {
         feedMinuteCandle("NIFTY", 0, "100", "105", "98", "102");
         feedMinuteCandle("NIFTY", 1, "102", "108", "101", "107");
         feedMinuteCandle("NIFTY", 5, "111", "113", "110", "112");
 
-        assertTrue(emitted.isEmpty(), "an incomplete window must not produce a misleading aggregated candle");
+        // Should emit a 5m candle with forward-filled synthetic candles for missing minutes 2, 3, 4
+        assertEquals(1, emitted.size(), "should emit aggregated candle with forward-filling");
+
+        Candle fiveMin = emitted.get(0);
+        assertEquals(new BigDecimal("100"), fiveMin.getOpen());
+        assertEquals(new BigDecimal("107"), fiveMin.getClose()); // Close from last real candle (minute 1)
+        assertEquals("5m", fiveMin.getTimeframe());
     }
 
     @Test

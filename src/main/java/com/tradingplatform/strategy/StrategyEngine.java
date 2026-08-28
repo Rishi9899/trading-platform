@@ -2,10 +2,13 @@ package com.tradingplatform.strategy;
 
 import com.tradingplatform.candle.CandleListener;
 import com.tradingplatform.domain.candle.Candle;
+import com.tradingplatform.domain.readiness.ReadinessSnapshot;
 import com.tradingplatform.domain.signal.Signal;
 import com.tradingplatform.domain.strategy.StrategyInstance;
+import com.tradingplatform.readiness.ReadinessService;
 import com.tradingplatform.strategy.confluence.ConfluenceDecision;
 import com.tradingplatform.strategy.confluence.ConfluenceEngine;
+import com.tradingplatform.ui.LiveTickStreamController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,9 +40,15 @@ public class StrategyEngine implements CandleListener {
     private final int maxHistoryPerKey;
 
     private final AtomicLong totalStrategyCount = new AtomicLong();
-    
+
     @Autowired(required = false)
     private ConfluenceEngine confluenceEngine;
+
+    @Autowired(required = false)
+    private ReadinessService readinessService;
+
+    @Autowired(required = false)
+    private LiveTickStreamController liveTickStreamController;
 
     /**
      * Default constructor for Spring Boot Component Scanning - confluenceEngine will be set via setter
@@ -74,6 +83,7 @@ public class StrategyEngine implements CandleListener {
     public void removeCandleStreamListener(CandleStreamListener listener) {
         this.candleStreamListeners.remove(listener);
     }
+
     /**
      * Thread-safe snapshot getter for UI history baseline endpoints.
      */
@@ -228,6 +238,35 @@ public class StrategyEngine implements CandleListener {
                 }
             }
         }
+
+        // NEW: Update readiness snapshot after signal processing
+        if (readinessService != null && !signals.isEmpty()) {
+            try {
+                // Get the consensus decision from the first augmented signal (they all share same confluence decision)
+                ConfluenceDecision confluenceDecision = augmentedSignals.isEmpty()
+                        ? null
+                        : augmentedSignals.get(0).confluenceDecision();
+
+                ReadinessSnapshot snapshot = readinessService.updateReadiness(
+                        candle.getSymbol(),
+                        candle.getTimeframe(),
+                        signals,
+                        confluenceDecision
+                );
+
+                // Broadcast readiness update to SSE clients
+                if (liveTickStreamController != null) {
+                    liveTickStreamController.onReadinessUpdate(snapshot);
+                }
+
+                log.debug("Readiness updated and broadcast for {}/{}: {}% ready",
+                        candle.getSymbol(), candle.getTimeframe(), snapshot.getReadinessPercent());
+
+            } catch (Exception e) {
+                log.warn("Failed to update readiness for {}/{}: {}",
+                        candle.getSymbol(), candle.getTimeframe(), e.getMessage());
+            }
+        }
     }
 
     /**
@@ -333,7 +372,4 @@ public class StrategyEngine implements CandleListener {
     private record StrategyBinding(StrategyInstance strategyInstance, TradingStrategy strategy,
                                    String confirmationTimeframe) {
     }
-
-
-
 }

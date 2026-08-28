@@ -2,46 +2,103 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Trading Strategy Visualizer</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #131722; color: #d1d4dc; }
-        .header-container { display: flex; align-items: center; gap: 15px; margin-bottom: 10px; }
-        h1 { color: #26a69a; font-size: 20px; margin: 0; }
-        select { background: #1e222d; color: #d1d4dc; border: 1px solid #2a2e39; padding: 6px 10px; border-radius: 4px; font-size: 14px; cursor: pointer; }
-        #status { font-size: 13px; color: #848e9c; margin-bottom: 15px; }
-        #chart-container { width: 100%; height: 550px; background: #131722; border: 1px solid #2a2e39; border-radius: 4px; }
-    </style>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Platform - Live Chart</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div class="container">
+    <!-- Left Side: Chart -->
+    <div class="chart-container">
+        <div class="controls">
+            <select id="symbol-select">
+                <optgroup label="📊 Indices">
+                    <option value="NSE:NIFTY50-INDEX">NIFTY 50</option>
+                    <option value="NSE:NIFTYBANK-INDEX">BANK NIFTY</option>
+                    <option value="NSE:FINNIFTY-INDEX">FIN NIFTY</option>
+                </optgroup>
+                <optgroup label="🥇 Commodities - October">
+                    <option value="MCX:GOLD26OCTFUT">Gold (Oct)</option>
+                    <option value="MCX:CRUDEOIL26OCTFUT">Crude Oil (Oct)</option>
+                    <option value="MCX:SILVER26OCTFUT">Silver (Oct)</option>
+                </optgroup>
+                <optgroup label="📈 Stocks">
+                    <option value="NSE:RELIANCE-EQ">Reliance</option>
+                    <option value="NSE:TCS-EQ">TCS</option>
+                    <option value="NSE:INFY-EQ">Infosys</option>
+                    <option value="NSE:SBIN-EQ">SBI</option>
+                </optgroup>
+            </select>
 
-<div class="header-container">
-    <h1>Strategy Visualizer</h1>
+            <select id="timeframe-select">
+                <option value="1m">1 minute</option>
+                <option value="5m" selected>5 minutes</option>
+                <option value="15m">15 minutes</option>
+                <option value="1h">1 hour</option>
+            </select>
 
-    <select id="symbol-select">
-        <option value="MCX:CRUDEOIL26OCTFUT">MCX: CRUDEOIL26OCTFUT</option>
-        <option value="MCX:GOLD26OCTFUT">MCX: GOLD26OCTFUT</option>
-        <option value="NSE:NIFTY50-INDEX">NSE: NIFTY 50 Index</option>
-        <option value="NSE:NIFTYBANK-INDEX">NSE: NIFTY Bank Index</option>
-        <option value="NSE:FINNIFTY-INDEX">NSE: FINNIFTY Index</option>
-        <option value="NSE:INFY-EQ">NSE: INFY</option>
-        <option value="NSE:TCS-EQ">NSE: TCS</option>
-        <option value="NSE:SBIN-EQ">NSE: SBIN</option>
-        <option value="NSE:RELIANCE-EQ">NSE: RELIANCE</option>
-    </select>
+            <button id="refresh-btn">Refresh</button>
+        </div>
 
-    <select id="timeframe-select">
-        <option value="1m">1m</option>
-        <option value="3m">3m</option>
-        <option value="5m" selected>5m</option>
-        <option value="15m">15m</option>
-        <option value="30m">30m</option>
-        <option value="1h">1h</option>
-    </select>
+        <div id="chart"></div>
+
+        <div class="status">
+            <span id="connection-status">⚫ Disconnected</span>
+            <span id="last-update">Last update: --:--:--</span>
+        </div>
+    </div>
+
+    <!-- Right Side: Readiness Panel -->
+    <div class="readiness-panel">
+        <h3>🎯 Signal Readiness</h3>
+
+        <div class="readiness-metric">
+            <div class="metric-header">
+                <span class="metric-label">Progress</span>
+                <span id="readiness-percent" class="metric-value">--</span>
+            </div>
+            <div class="progress-bar">
+                <div id="readiness-bar" class="progress-fill"></div>
+            </div>
+        </div>
+
+        <div class="readiness-metric">
+            <div class="metric-header">
+                <span class="metric-label">Votes</span>
+                <span id="votes" class="metric-value">0/3</span>
+            </div>
+        </div>
+
+        <div class="readiness-metric">
+            <div class="metric-header">
+                <span class="metric-label">Signal</span>
+                <span id="signal" class="signal-badge signal-hold">HOLD</span>
+            </div>
+        </div>
+
+        <div class="readiness-metric">
+            <div class="metric-header">
+                <span class="metric-label">Agreement</span>
+                <span id="agreement" class="metric-value">0.0%</span>
+            </div>
+        </div>
+
+        <div id="blockers-section" class="readiness-metric" style="display: none;">
+            <div class="metric-label">⚠️ Blockers</div>
+            <div id="blockers" class="blockers-list"></div>
+        </div>
+
+        <div class="readiness-metric">
+            <div class="metric-label">📍 Nearest Trigger</div>
+            <div id="nearest-trigger" class="trigger-text">Waiting for data...</div>
+        </div>
+
+        <div class="readiness-footer">
+            <small id="last-updated">Updated: --:--:--</small>
+        </div>
+    </div>
 </div>
-
-<p id="status">Initializing...</p>
-<div id="chart-container"></div>
 
 <script src="app.js"></script>
 </body>

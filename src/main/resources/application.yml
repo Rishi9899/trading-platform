@@ -1,7 +1,13 @@
 server:
   port: 8080
+  tomcat:
+    connection-timeout: 60000  # 60 seconds
 
 spring:
+  mvc:
+    async:
+      request-timeout: 1800000  # 30 minutes
+
   datasource:
     url: jdbc:postgresql://localhost:5432/trading_platform
     username: postgres
@@ -22,8 +28,23 @@ spring:
 
 logging:
   level:
-    org.hibernate.SQL: OFF
-    org.hibernate.orm.jdbc.bind: OFF
+    # Silence noisy SSE warnings
+    org.springframework.web.context.request.async: WARN
+    org.apache.catalina.core: WARN
+
+    # Silence Redis repository warnings
+    org.springframework.data.redis.repository: ERROR
+
+    # Silence Netty warnings
+    io.netty: WARN
+
+    # Hibernate
+    org.hibernate.SQL: false
+    org.hibernate.orm.jdbc.bind: false
+
+    # Your app logs
+    com.tradingplatform: INFO
+    com.tradingplatform.ui.LiveTickStreamController: DEBUG
 
 app:
   tick:
@@ -36,16 +57,16 @@ app:
       - NSE:TCS-EQ
       - NSE:INFY-EQ
       - NSE:SBIN-EQ
-      - MCX:CRUDEOIL26SEPFUT
-      - MCX:GOLD26SEPFUT
-      - MCX:SILVER26SEPFUT
+      - MCX:CRUDEOIL26OCTFUT
+      - MCX:GOLD26OCTFUT
+      - MCX:SILVER26OCTFUT
     interval-millis: 500
 
   strategies:
     # ===== NIFTY50 (3 voters) =====
     - type: ema-crossover
       symbol: NSE:NIFTY50-INDEX
-      timeframe: 5m
+      timeframe: 1m
       parameters:
         fastPeriod: 9
         slowPeriod: 21
@@ -253,7 +274,7 @@ app:
 
     # ===== CRUDE OIL (4 voters) =====
     - type: donchian-breakout
-      symbol: MCX:CRUDEOIL26SEPFUT
+      symbol: MCX:CRUDEOIL26OCTFUT
       timeframe: 5m
       parameters:
         entryPeriod: 55
@@ -262,7 +283,7 @@ app:
         minAtrFraction: 0.5
 
     - type: ema-crossover
-      symbol: MCX:CRUDEOIL26SEPFUT
+      symbol: MCX:CRUDEOIL26OCTFUT
       timeframe: 5m
       parameters:
         fastPeriod: 9
@@ -272,7 +293,7 @@ app:
         sellRsiThreshold: 50.0
 
     - type: macd-momentum
-      symbol: MCX:CRUDEOIL26SEPFUT
+      symbol: MCX:CRUDEOIL26OCTFUT
       timeframe: 5m
       parameters:
         fastPeriod: 12
@@ -281,7 +302,7 @@ app:
         histogramScale: 0.5
 
     - type: bollinger-breakout
-      symbol: MCX:CRUDEOIL26SEPFUT
+      symbol: MCX:CRUDEOIL26OCTFUT
       timeframe: 5m
       parameters:
         bandPeriod: 20
@@ -291,7 +312,7 @@ app:
 
     # ===== GOLD (4 voters) =====
     - type: donchian-breakout
-      symbol: MCX:GOLD26SEPFUT
+      symbol: MCX:GOLD26OCTFUT
       timeframe: 5m
       parameters:
         entryPeriod: 55
@@ -300,7 +321,7 @@ app:
         minAtrFraction: 0.5
 
     - type: ema-crossover
-      symbol: MCX:GOLD26SEPFUT
+      symbol: MCX:GOLD26OCTFUT
       timeframe: 5m
       parameters:
         fastPeriod: 13
@@ -310,7 +331,7 @@ app:
         sellRsiThreshold: 55.0
 
     - type: macd-momentum
-      symbol: MCX:GOLD26SEPFUT
+      symbol: MCX:GOLD26OCTFUT
       timeframe: 5m
       parameters:
         fastPeriod: 12
@@ -319,7 +340,7 @@ app:
         histogramScale: 0.5
 
     - type: bollinger-breakout
-      symbol: MCX:GOLD26SEPFUT
+      symbol: MCX:GOLD26OCTFUT
       timeframe: 5m
       parameters:
         bandPeriod: 20
@@ -329,7 +350,7 @@ app:
 
     # ===== SILVER (4 voters) =====
     - type: donchian-breakout
-      symbol: MCX:SILVER26SEPFUT
+      symbol: MCX:SILVER26OCTFUT
       timeframe: 5m
       parameters:
         entryPeriod: 55
@@ -338,7 +359,7 @@ app:
         minAtrFraction: 0.5
 
     - type: ema-crossover
-      symbol: MCX:SILVER26SEPFUT
+      symbol: MCX:SILVER26OCTFUT
       timeframe: 5m
       parameters:
         fastPeriod: 13
@@ -348,7 +369,7 @@ app:
         sellRsiThreshold: 55.0
 
     - type: macd-momentum
-      symbol: MCX:SILVER26SEPFUT
+      symbol: MCX:SILVER26OCTFUT
       timeframe: 5m
       parameters:
         fastPeriod: 12
@@ -357,7 +378,7 @@ app:
         histogramScale: 0.5
 
     - type: bollinger-breakout
-      symbol: MCX:SILVER26SEPFUT
+      symbol: MCX:SILVER26OCTFUT
       timeframe: 5m
       parameters:
         bandPeriod: 20
