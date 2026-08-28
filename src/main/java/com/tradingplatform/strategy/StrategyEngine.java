@@ -14,14 +14,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 @Component
 public class StrategyEngine implements CandleListener {
@@ -270,6 +267,97 @@ public class StrategyEngine implements CandleListener {
     }
 
     /**
+     * Appends a batch of candles to existing history without wiping previous chunks.
+     */
+    public void appendHistoricalCandles(String symbol, String timeframe, List<Candle> candleBatch) {
+        String key = key(symbol, timeframe);
+        Deque<Candle> history = historyByKey.computeIfAbsent(key, k -> new ArrayDeque<>());
+
+        synchronized (history) {
+            for (Candle candle : candleBatch) {
+                history.addLast(candle);
+                while (history.size() > maxHistoryPerKey) {
+                    history.removeFirst();
+                }
+                notifyStreamListeners(candle);
+            }
+        }
+        log.info("StrategyEngine: Appended {} historical candles to key {}. Total history size: {}",
+                candleBatch.size(), key, history.size());
+    }
+
+    // ============================================
+    // ✅ NEW: Public Replay/Debug Methods
+    // ============================================
+
+    /**
+     * Get historical candles for replay/debugging
+     */
+    public List<Candle> getHistoricalCandles(String symbol, String timeframe) {
+        String key = key(symbol, timeframe);
+        Deque<Candle> history = historyByKey.get(key);
+
+        if (history == null) {
+            return Collections.emptyList();
+        }
+
+        synchronized (history) {
+            return new ArrayList<>(history);
+        }
+    }
+
+    /**
+     * Check if warmup is complete for a symbol
+     */
+    public boolean isWarmupComplete(String symbol) {
+        return warmupStatusBySymbol.getOrDefault(symbol, false);
+    }
+
+    /**
+     * Get all symbols with warmup data
+     */
+    public List<String> getWarmedUpSymbols() {
+        return warmupStatusBySymbol.entrySet().stream()
+                .filter(Map.Entry::getValue)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get warmup status for all symbols
+     */
+    public Map<String, Boolean> getWarmupStatus() {
+        return new HashMap<>(warmupStatusBySymbol);
+    }
+
+    /**
+     * Get available timeframes for a symbol
+     */
+    public List<String> getAvailableTimeframes(String symbol) {
+        return historyByKey.keySet().stream()
+                .filter(k -> k.startsWith(symbol.toUpperCase() + "|"))
+                .map(k -> k.substring(k.indexOf('|') + 1))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get candle count for debugging
+     */
+    public Map<String, Integer> getCandleCounts() {
+        Map<String, Integer> counts = new HashMap<>();
+        historyByKey.forEach((key, deque) -> {
+            synchronized (deque) {
+                counts.put(key, deque.size());
+            }
+        });
+        return counts;
+    }
+
+    // ============================================
+    // Private Helper Methods
+    // ============================================
+
+    /**
      * Builds a per-binding context: reuses the shared base context for
      * strategies with no confirmation timeframe (the common case, no extra
      * lookup), otherwise attaches a snapshot of the confirmation timeframe's
@@ -333,26 +421,6 @@ public class StrategyEngine implements CandleListener {
                     strategyCount, candle.getSymbol(), candle.getTimeframe(), elapsedMicros,
                     String.format("%.1f", fraction * 100), candle.getTimeframe());
         }
-    }
-
-    /**
-     * Appends a batch of candles to existing history without wiping previous chunks.
-     */
-    public void appendHistoricalCandles(String symbol, String timeframe, List<Candle> candleBatch) {
-        String key = key(symbol, timeframe);
-        Deque<Candle> history = historyByKey.computeIfAbsent(key, k -> new ArrayDeque<>());
-
-        synchronized (history) {
-            for (Candle candle : candleBatch) {
-                history.addLast(candle);
-                while (history.size() > maxHistoryPerKey) {
-                    history.removeFirst();
-                }
-                notifyStreamListeners(candle);
-            }
-        }
-        log.info("StrategyEngine: Appended {} historical candles to key {}. Total history size: {}",
-                candleBatch.size(), key, history.size());
     }
 
     /**

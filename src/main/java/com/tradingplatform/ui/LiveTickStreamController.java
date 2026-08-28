@@ -1,6 +1,7 @@
 package com.tradingplatform.ui;
 
 import com.tradingplatform.domain.readiness.ReadinessSnapshot;
+import com.tradingplatform.domain.signal.Signal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -98,6 +99,43 @@ public class LiveTickStreamController {
                 safeCloseAndRemove(client);
             } catch (Exception e) {
                 log.warn("Unexpected error sending candle_closed to {}: {} - closing connection", symbol, e.getMessage());
+                safeCloseAndRemove(client);
+            }
+        }
+    }
+
+    /**
+     * ✅ FIXED: Send signal events to frontend
+     */
+    public void onSignal(Signal signal) {
+        String symbol = signal.getSymbol();
+
+        // Build data map with correct method names and null-safe access
+        Map<String, Object> data = Map.of(
+                "symbol", signal.getSymbol(),
+                "strategyType", signal.getStrategyInstance().getStrategy().getName(),
+                "signalType", signal.getSignalType().name(),
+                "price", signal.getPrice(),
+                "confidence", signal.getConfidence() != null ? signal.getConfidence() : 0.5,
+                "reason", signal.getReason() != null ? signal.getReason() : "No reason provided",
+                "confluenceType", signal.getConfluenceDecisionType() != null ? signal.getConfluenceDecisionType() : "NEUTRAL",
+                "agreementScore", signal.getConfluenceAgreementScore() != null ? signal.getConfluenceAgreementScore().doubleValue() : 0.5,
+                "timestamp", signal.getTimestamp().toEpochMilli()
+        );
+
+        for (TickClient client : clients) {
+            if (!client.symbol.equalsIgnoreCase(symbol) || client.closed.get()) continue;
+
+            try {
+                client.emitter.send(SseEmitter.event().name("signal").data(data));
+            } catch (IOException e) {
+                log.debug("Failed to send signal to {}: IOException - closing connection", symbol);
+                safeCloseAndRemove(client);
+            } catch (IllegalStateException e) {
+                log.debug("Failed to send signal to {}: IllegalStateException - closing connection", symbol);
+                safeCloseAndRemove(client);
+            } catch (Exception e) {
+                log.warn("Unexpected error sending signal to {}: {} - closing connection", symbol, e.getMessage());
                 safeCloseAndRemove(client);
             }
         }

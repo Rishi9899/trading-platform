@@ -1,13 +1,7 @@
 server:
   port: 8080
-  tomcat:
-    connection-timeout: 60000  # 60 seconds
 
 spring:
-  mvc:
-    async:
-      request-timeout: 1800000  # 30 minutes
-
   datasource:
     url: jdbc:postgresql://localhost:5432/trading_platform
     username: postgres
@@ -28,23 +22,11 @@ spring:
 
 logging:
   level:
-    # Silence noisy SSE warnings
-    org.springframework.web.context.request.async: WARN
-    org.apache.catalina.core: WARN
-
-    # Silence Redis repository warnings
-    org.springframework.data.redis.repository: ERROR
-
-    # Silence Netty warnings
-    io.netty: WARN
-
-    # Hibernate
-    org.hibernate.SQL: false
-    org.hibernate.orm.jdbc.bind: false
-
-    # Your app logs
-    com.tradingplatform: INFO
-    com.tradingplatform.ui.LiveTickStreamController: DEBUG
+    org.hibernate.SQL: OFF
+    org.hibernate.orm.jdbc.bind: OFF
+    com.tradingplatform.strategy: DEBUG
+    com.tradingplatform.readiness: DEBUG
+    com.tradingplatform.pattern: DEBUG
 
 app:
   tick:
@@ -66,7 +48,7 @@ app:
     # ===== NIFTY50 (3 voters) =====
     - type: ema-crossover
       symbol: NSE:NIFTY50-INDEX
-      timeframe: 1m
+      timeframe: 5m
       parameters:
         fastPeriod: 9
         slowPeriod: 21
@@ -310,7 +292,7 @@ app:
         atrPeriod: 14
         minBandWidthAtrMultiple: 1.5
 
-    # ===== GOLD (4 voters) =====
+    # ===== GOLD (5 voters - includes pattern recognition!) =====
     - type: donchian-breakout
       symbol: MCX:GOLD26OCTFUT
       timeframe: 5m
@@ -347,6 +329,21 @@ app:
         stdDevMultiplier: 2.5
         atrPeriod: 14
         minBandWidthAtrMultiple: 1.5
+
+    # ✅ NEW: Candlestick Pattern Recognition for GOLD
+    - type: candlestick-pattern
+      symbol: MCX:GOLD26OCTFUT
+      timeframe: 5m
+      parameters:
+        minConfidence: 0.65
+        requireTrendContext: true
+        patterns:
+          - Bullish Engulfing
+          - Hammer
+          - Morning Star
+          - Bearish Engulfing
+          - Evening Star
+          - Shooting Star
 
     # ===== SILVER (4 voters) =====
     - type: donchian-breakout

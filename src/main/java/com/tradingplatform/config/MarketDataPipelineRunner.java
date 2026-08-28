@@ -89,10 +89,24 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
         TickEventQueue tickEventQueue = new TickEventQueue(queueCapacity);
         CandleBuilder candleBuilder = new CandleBuilder(baseTimeframe, baseLabel);
 
+//        // 1) Signal listeners
+//        strategyEngine.addSignalListener(new LoggingSignalListener());
+//        strategyEngine.addSignalListener(new PersistingSignalListener(signalRepository));
+//        strategyEngine.addSignalListener(new PerformanceTrackingSignalListener());
+
         // 1) Signal listeners
         strategyEngine.addSignalListener(new LoggingSignalListener());
         strategyEngine.addSignalListener(new PersistingSignalListener(signalRepository));
         strategyEngine.addSignalListener(new PerformanceTrackingSignalListener());
+
+// ✅ NEW: Add signal SSE fanout
+        strategyEngine.addSignalListener(signal -> {
+            try {
+                liveTickStreamController.onSignal(signal);
+            } catch (Exception e) {
+                log.warn("Failed signal SSE fanout for {}: {}", signal.getSymbol(), e.getMessage());
+            }
+        });
 
         // 2) Tick flow wiring
         tickSource.addListener(tickEventQueue);
