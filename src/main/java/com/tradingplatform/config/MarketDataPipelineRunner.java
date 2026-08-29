@@ -11,6 +11,7 @@ import com.tradingplatform.domain.signal.SignalRepository;
 import com.tradingplatform.evaluation.PerformanceTrackingSignalListener;
 import com.tradingplatform.eventing.TickEventQueue;
 import com.tradingplatform.marketdata.FakeTickGenerator;
+import com.tradingplatform.marketdata.MarketDataConnectionRegistry;
 import com.tradingplatform.marketdata.TickSource;
 import com.tradingplatform.marketdata.fyers.FyersSidecarTickSource;
 import com.tradingplatform.strategy.LoggingSignalListener;
@@ -51,6 +52,7 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
     // NEW: UI/Redis components
     private final RedisCandleWriter redisCandleWriter;
     private final LiveTickStreamController liveTickStreamController;
+    private final MarketDataConnectionRegistry connectionRegistry;
 
     public MarketDataPipelineRunner(MarketDataProperties properties,
                                     MarketCandleRepository marketCandleRepository,
@@ -58,7 +60,8 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
                                     StrategyInstanceLoader strategyInstanceLoader,
                                     StrategyEngine strategyEngine,
                                     RedisCandleWriter redisCandleWriter,
-                                    LiveTickStreamController liveTickStreamController) {
+                                    LiveTickStreamController liveTickStreamController,
+                                    MarketDataConnectionRegistry connectionRegistry) {
         this.properties = properties;
         this.marketCandleRepository = marketCandleRepository;
         this.signalRepository = signalRepository;
@@ -66,6 +69,7 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
         this.strategyEngine = strategyEngine;
         this.redisCandleWriter = redisCandleWriter;
         this.liveTickStreamController = liveTickStreamController;
+        this.connectionRegistry = connectionRegistry;
     }
 
     @Override
@@ -275,12 +279,17 @@ public class MarketDataPipelineRunner implements CommandLineRunner {
         return switch (source) {
             case "fyers-sidecar" -> {
                 var sidecar = properties.getFyers().getSidecar();
-                yield new FyersSidecarTickSource(sidecar.getUrl(), sidecar.getReconnectDelayMillis());
+                var fyersSource = new FyersSidecarTickSource(sidecar.getUrl(), sidecar.getReconnectDelayMillis());
+                connectionRegistry.registerFyersSidecar(fyersSource);
+                yield fyersSource;
             }
-            case "fake" -> new FakeTickGenerator(
-                    properties.getTick().getSymbols(),
-                    properties.getTick().getIntervalMillis()
-            );
+            case "fake" -> {
+                connectionRegistry.registerFake();
+                yield new FakeTickGenerator(
+                        properties.getTick().getSymbols(),
+                        properties.getTick().getIntervalMillis()
+                );
+            }
             default -> throw new IllegalArgumentException("Unknown app.tick.source: " + source);
         };
     }

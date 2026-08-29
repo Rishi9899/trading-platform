@@ -11,6 +11,12 @@ spring:
     redis:
       host: localhost
       port: 6379
+      # Without this, Lettuce's default command timeout is 60s - a dead
+      # Redis would hang candle writes and the /api/health check for a full
+      # minute before failing. 2s keeps failures fast; writes already
+      # degrade gracefully (see RedisCandleWriter) so a short timeout only
+      # helps here.
+      timeout: 2000
 
   jpa:
     hibernate:
