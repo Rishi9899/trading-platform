@@ -51,7 +51,7 @@ public class StrategyEngine implements CandleListener {
      * Default constructor for Spring Boot Component Scanning - confluenceEngine will be set via setter
      */
     public StrategyEngine() {
-        this(220);
+        this(400);
     }
 
     public StrategyEngine(int maxHistoryPerKey) {
